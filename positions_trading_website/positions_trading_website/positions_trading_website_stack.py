@@ -36,7 +36,7 @@ class PositionsTradingWebsiteStack(Stack):
             website_error_document="error.html",
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
-            # access_control=s3.BucketAccessControl.PUBLIC_READ # no se si tenga que agregar esto
+            access_control=s3.BucketAccessControl.PUBLIC_READ
         )
         return bucket
     
@@ -46,14 +46,14 @@ class PositionsTradingWebsiteStack(Stack):
             resources=[bucket.arn_for_objects("*")],
             principals=[iam.AnyPrincipal()],
         )
-        # Con este permitimos que se acceda al bucket
-        # unicamente desde una dirección específica.
-        # En este caso nuestroa distribución de CloudFront.
-        bucket_policy.add_condition(
-            "StringEquals",
-            {"aws:SourceArn": f"arn:aws:cloudfront::{self.account}:distribution/{distribution.distribution_id}"},
-        )
 
+        # # Con este permitimos que se acceda al bucket
+        # # unicamente desde una dirección específica.
+        # # En este caso nuestroa distribución de CloudFront.
+        # bucket_policy.add_condition(
+        #     "StringEquals",
+        #     {"aws:SourceArn": f"arn:aws:cloudfront::{self.account}:distribution/{distribution.distribution_id}"},
+        # )
         bucket.add_to_resource_policy(bucket_policy)
 
     def get_hosted_zone(self):
