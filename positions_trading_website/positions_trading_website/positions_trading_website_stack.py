@@ -1,10 +1,13 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 from constructs import Construct
 from aws_cdk import (
     Stack,
     aws_iam as iam,
     aws_cloudfront as cloudfront,
     aws_s3 as s3,
-    aws_ssm as ssm,
     aws_certificatemanager as acm,
     aws_route53 as route53,
     aws_route53_targets as targets,
@@ -15,10 +18,10 @@ class PositionsTradingWebsiteStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        self.domain_certificate_arn = "arn:aws:acm:us-east-1:794976204901:certificate/794f402d-74aa-4770-967d-df373817517a"
-        self.site_domain_name = "positions.pythonandfamily.com"
-        self.hosted_zone_name = "pythonandfamily.com"
-        self.hosted_zone_id = "Z1006554ZI7T9PZ7LPEH"
+        self.domain_certificate_arn = os.getenv("domain_certificate_arn")
+        self.site_domain_name = os.getenv("site_domain_name")
+        self.hosted_zone_name = os.getenv("hosted_zone_name")
+        self.hosted_zone_id = os.getenv("hosted_zone_id")
 
         bucket = self.create_site_bucket()
         hosted_zone = self.get_hosted_zone()
