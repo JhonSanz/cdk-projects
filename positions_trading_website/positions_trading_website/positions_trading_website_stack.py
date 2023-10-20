@@ -27,10 +27,16 @@ class PositionsTradingWebsiteStack(Stack):
         hosted_zone = self.get_hosted_zone()
         certificate = self.create_certificate(hosted_zone)
         distribution = self.create_cloudfront_distribution(bucket, certificate)
-        self.set_bucket_policies(bucket, distribution)
         self.create_route53_record(hosted_zone, distribution)
 
     def create_site_bucket(self):
+        block_public_access = s3.BlockPublicAccess(
+            block_public_acls=False,
+            ignore_public_acls=False,
+            block_public_policy=False,
+            restrict_public_buckets=False
+        )
+
         bucket = s3.Bucket(
             self,
             "site_bucket",
@@ -39,25 +45,15 @@ class PositionsTradingWebsiteStack(Stack):
             website_error_document="error.html",
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
-            access_control=s3.BucketAccessControl.PUBLIC_READ
+            block_public_access=block_public_access
         )
-        return bucket
-    
-    def set_bucket_policies(self, bucket, distribution):
         bucket_policy = iam.PolicyStatement(
             actions=["s3:GetObject"],
             resources=[bucket.arn_for_objects("*")],
             principals=[iam.AnyPrincipal()],
         )
-
-        # # Con este permitimos que se acceda al bucket
-        # # unicamente desde una dirección específica.
-        # # En este caso nuestroa distribución de CloudFront.
-        # bucket_policy.add_condition(
-        #     "StringEquals",
-        #     {"aws:SourceArn": f"arn:aws:cloudfront::{self.account}:distribution/{distribution.distribution_id}"},
-        # )
         bucket.add_to_resource_policy(bucket_policy)
+        return bucket
 
     def get_hosted_zone(self):
         # Obitene una zona hospedada existente en la cuenta.
@@ -124,10 +120,11 @@ class PositionsTradingWebsiteStack(Stack):
                 # pueden haber varios orígenes entonces especificamos que este es el por defecto
                 cloudfront.SourceConfiguration(
                     custom_origin_source=origin_source,
+
                     behaviors=[
                         cloudfront.Behavior(
                             is_default_behavior=True,
-                        )
+                        ),
                     ],
                 )
             ],
