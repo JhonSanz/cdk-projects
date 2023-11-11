@@ -1,0 +1,16 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+  pre_build:
+    commands:
+      - echo "PRE BUILD COMMANDS"
+  build:
+    commands:
+      - echo "BUILD COMMANDS"
+
+  post_build:
+    commands:
+      - echo "POST BUILD COMMANDS"

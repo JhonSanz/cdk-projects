@@ -1,3 +1,6 @@
+### CHECK THIS VIDEO
+- https://www.youtube.com/watch?v=kOU-7_Sc72U
+
 
 # Welcome to your CDK Python project!
 

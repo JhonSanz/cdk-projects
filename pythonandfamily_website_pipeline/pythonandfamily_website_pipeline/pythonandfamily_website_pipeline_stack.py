@@ -5,6 +5,7 @@ from aws_cdk import (
     aws_codepipeline as pipeline,
     aws_codecommit as codecommit,
     aws_codepipeline_actions as pipelineactions,
+    SecretValue,
 )
 
 
@@ -19,8 +20,8 @@ class PythonandfamilyWebsitePipelineStack(Stack):
             build_spec=codebuild.BuildSpec.from_source_filename(
                 "buildspec.yaml"),
             source=codebuild.Source.git_hub(
-                owner="<owner>",
-                repo="<repo>"
+                owner="JhonSanz",
+                repo="aws_apuntes"
             ),
             environment=codebuild.BuildEnvironment(
                 privileged=True
@@ -48,10 +49,11 @@ class PythonandfamilyWebsitePipelineStack(Stack):
                 pipelineactions.GitHubSourceAction(
                     action_name="FetchSourceCode",
                     output=source_code_artifact,
-                    owner="",
-                    repo="",
+                    owner="JhonSanz",
+                    repo="aws_apuntes",
                     branch="aws_master",
-                    oauth_token=cdk.SecretValue.secrets_manager('my-github-token'),
+                    # use something safer here xd
+                    oauth_token=SecretValue.unsafe_plain_text("YOUR_GITHUB_TOKEN"), # https://github.com/settings/tokens
                 )
             ]
         )
@@ -62,7 +64,7 @@ class PythonandfamilyWebsitePipelineStack(Stack):
             actions=[
                 pipelineactions.CodeBuildAction(
                     action_name="DockerBuildPush",
-                    input=pipeline.Artifact("SourceArtifact"),
+                    input=pipeline.Artifact("SourceCodeArtifact"),
                     project=build_image,
                     outputs=[build_artifact]
                 )
