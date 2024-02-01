@@ -6,15 +6,20 @@ from aws_cdk import (
     aws_ecs as ecs,
     aws_ecs_patterns as ecs_patterns,
 )
-from .config import VPC_CONFIG, SUBNETS
+from .config import BACKEND_CONFIG, VPC_CONFIG, SUBNETS
 
 
 class BackendEcsStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         resources = self.create_vpc()
-        self.create_security_groups(resources["vpc"])
+        sec_groups = self.create_security_groups(resources["vpc"])
         self.create_private_nacl(resources["vpc"], resources["private_subnets"][0])
+        self.create_cluster(
+            resources["vpc"],
+            resources["private_subnets"][0],
+            sec_groups["private_sec_gp"],
+        )
 
     def create_security_groups(self, vpc):
         internet_sg = ec2.SecurityGroup(
@@ -27,6 +32,10 @@ class BackendEcsStack(Stack):
             self, f"{VPC_CONFIG['vpc_name']}-private-sg", vpc=vpc
         )
         internal_sg.add_ingress_rule(internet_sg, ec2.Port.all_traffic())
+        return {
+            "public_sec_gp": internet_sg,
+            "private_sec_gp": internal_sg,
+        }
 
     def create_private_nacl(self, vpc, private_subnet):
         my_nacl = ec2.NetworkAcl(self, "MyNACL", vpc=vpc)
@@ -124,23 +133,30 @@ class BackendEcsStack(Stack):
 
         return resources
 
-        # cluster = ecs.Cluster(self, "Cluster", vpc=vpc)
+    def create_cluster(self, vpc, private_subnet, private_sec_gp):
+        cluster = ecs.Cluster(self, "MyCluster", vpc=vpc)
 
-        # # Crea una tarea (task) de ECS
-        # task_definition = ecs.FargateTaskDefinition(self, "MyTaskDefinition")
+        task_definition = ecs.FargateTaskDefinition(
+            self,
+            f"{VPC_CONFIG['vpc_name']}-MyFargateTaskDefinition",
+            memory_limit_mib=512,  # 512 is 0.5 GB
+            cpu=256,  # 256 is 0.25 vCPU
+        )
 
-        # # Define un contenedor en la tarea
-        # container = task_definition.add_container(
-        #     "MyContainer",
-        #     image=ecs.ContainerImage.from_registry("nginx"),
-        #     memory_limit_mib=512,
-        # )
+        task_definition.add_container(
+            f"{VPC_CONFIG['vpc_name']}-MyBackendContainer",
+            image=ecs.ContainerImage.from_registry(BACKEND_CONFIG["docker_image"]),
+            memory_reservation_mib=256,
+        )
 
-        # # Crea un servicio de ECS en el clúster
-        # ecs_patterns.ApplicationLoadBalancedFargateService(
-        #     self,
-        #     "MyFargateService",
-        #     cluster=cluster,
-        #     task_definition=task_definition,
-        #     public_load_balancer=True,  # Usa un balanceador de carga público
-        # )
+        print("-"*10, ">", private_subnet, ":(")
+        service = ecs.FargateService(
+            self,
+            "MyService",
+            cluster=cluster,
+            task_definition=task_definition,
+            desired_count=1,
+            assign_public_ip=False,
+            vpc_subnets=ec2.SubnetSelection(subnets=[private_subnet]),
+            security_groups=[private_sec_gp],
+        )

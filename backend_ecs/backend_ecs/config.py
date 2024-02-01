@@ -1,3 +1,7 @@
+BACKEND_CONFIG = {
+    "docker_image": "nginx:latest"
+}
+
 VPC_CONFIG = {
     "vpc_name": "my-awesome-project",
     "cidr": "10.6.6.0/27",
