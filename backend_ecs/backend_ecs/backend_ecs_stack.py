@@ -17,11 +17,15 @@ class BackendEcsStack(Stack):
         self.create_private_nacl(resources["vpc"], resources["private_subnets"][0])
 
     def create_security_groups(self, vpc):
-        internet_sg = ec2.SecurityGroup(self, vpc=vpc)
+        internet_sg = ec2.SecurityGroup(
+            self, f"{VPC_CONFIG['vpc_name']}-public-sg", vpc=vpc
+        )
         internet_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80))
         internet_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(22))
 
-        internal_sg = ec2.SecurityGroup(self, vpc=vpc)
+        internal_sg = ec2.SecurityGroup(
+            self, f"{VPC_CONFIG['vpc_name']}-private-sg", vpc=vpc
+        )
         internal_sg.add_ingress_rule(internet_sg, ec2.Port.all_traffic())
 
     def create_private_nacl(self, vpc, private_subnet):
@@ -29,21 +33,22 @@ class BackendEcsStack(Stack):
         my_nacl.add_entry(
             f"{VPC_CONFIG['vpc_name']}-AllowSpecificIPInbound",
             rule_number=100,
-            cidr=SUBNETS[0]["cidr_block"],
+            cidr=ec2.AclCidr.ipv4(SUBNETS[0]["cidr_block"]),
             traffic=ec2.AclTraffic.all_traffic(),
             direction=ec2.TrafficDirection.INGRESS,
         )
         my_nacl.add_entry(
             f"{VPC_CONFIG['vpc_name']}-AllowAllOutbound",
             rule_number=200,
+            cidr=ec2.AclCidr.any_ipv4(),
             traffic=ec2.AclTraffic.all_traffic(),
             direction=ec2.TrafficDirection.EGRESS,
         )
-        ec2.SubnetNetworkAclAssociation(
+        ec2.CfnSubnetNetworkAclAssociation(
             self,
             f"{VPC_CONFIG['vpc_name']}-MyNACLAssociation",
-            subnet_id=private_subnet.subnet_id,
-            network_acl=my_nacl,
+            subnet_id=private_subnet.attr_subnet_id,
+            network_acl_id=my_nacl.network_acl_id,
         )
 
     def create_vpc(self):
@@ -85,7 +90,7 @@ class BackendEcsStack(Stack):
                 tags=[
                     {
                         "key": "Name",
-                        "value": f"{VPC_CONFIG['vpc_name']}{-type_subnet}-rt",
+                        "value": f"{VPC_CONFIG['vpc_name']}-{type_subnet}-rt",
                     }
                 ],
             )
