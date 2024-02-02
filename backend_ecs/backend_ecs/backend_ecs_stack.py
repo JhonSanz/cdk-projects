@@ -56,11 +56,20 @@ class BackendEcsStack(Stack):
         ec2.CfnSubnetNetworkAclAssociation(
             self,
             f"{VPC_CONFIG['vpc_name']}-MyNACLAssociation",
-            subnet_id=private_subnet.attr_subnet_id,
+            subnet_id=private_subnet.subnet_id,
             network_acl_id=my_nacl.network_acl_id,
         )
 
     def create_vpc(self):
+        resources = {
+            "public_subnets": [],
+            "private_subnets": [],
+            "public_route_table": None,
+            "private_route_table": None,
+            "vpc": None,
+            "all_subnets": [],
+        }
+
         vpc = ec2.Vpc(
             self,
             VPC_CONFIG["vpc_name"],
@@ -70,66 +79,73 @@ class BackendEcsStack(Stack):
             enable_dns_support=True,
             enable_dns_hostnames=True,
         )
-
-        resources = {
-            "public_subnets": [],
-            "private_subnets": [],
-            "public_route_table": None,
-            "private_route_table": None,
-            "vpc": vpc,
-        }
+        resources["vpc"] = vpc
 
         for subnet in SUBNETS:
-            subnet_created = ec2.CfnSubnet(
+            subnet_created = ec2.Subnet(
                 self,
                 subnet["name"],
                 vpc_id=vpc.vpc_id,
                 cidr_block=subnet["cidr_block"],
                 availability_zone=subnet["availability_zone"],
-                tags=[{"key": "Name", "value": subnet["name"]}],
                 map_public_ip_on_launch=True,
             )
             resources[f"{subnet['type']}_subnets"].append(subnet_created)
 
-        for type_subnet in ["public", "private"]:
-            rt_table_created = ec2.CfnRouteTable(
-                self,
-                f"my-awesome-{type_subnet}-rt",
-                vpc_id=vpc.vpc_id,
-                tags=[
-                    {
-                        "key": "Name",
-                        "value": f"{VPC_CONFIG['vpc_name']}-{type_subnet}-rt",
-                    }
-                ],
-            )
-            resources[f"{type_subnet}_route_table"] = rt_table_created
-
-            for index, subnet in enumerate(resources[f"{type_subnet}_subnets"]):
-                ec2.CfnSubnetRouteTableAssociation(
-                    self,
-                    f"rt-{type_subnet}-{index}-association",
-                    subnet_id=subnet.ref,
-                    route_table_id=rt_table_created.ref,
-                )
-
-        internet_gateway = ec2.CfnInternetGateway(
-            self, f"{VPC_CONFIG['vpc_name']}-internet-gateway"
-        )
-        ec2.CfnVPCGatewayAttachment(
-            self,
-            "internet-gateway-attachment",
-            vpc_id=vpc.vpc_id,
-            internet_gateway_id=internet_gateway.ref,
+        resources["all_subnets"] = (
+            resources["public_subnets"] + resources["private_subnets"]
         )
 
-        ec2.CfnRoute(
-            self,
-            f"my-public-route-internet",
-            destination_cidr_block="0.0.0.0/0",
-            gateway_id=internet_gateway.ref,
-            route_table_id=resources["public_route_table"].ref,
-        )
+        # internet_gateway = ec2.CfnInternetGateway(
+        #     self, f"{VPC_CONFIG['vpc_name']}-internet-gateway"
+        # )
+
+        # for intex, subnet in enumerate(resources["all_subnets"]):
+        #     subnet.add_route(
+        #         f"{subnet.to_string()}-{intex}-{VPC_CONFIG['vpc_name']}-route",
+        #         router_id=internet_gateway.ref,
+        #         router_type=ec2.RouterType.GATEWAY,
+        #     )
+
+        # for type_subnet in ["public", "private"]:
+        #     rt_table_created = ec2.CfnRouteTable(
+        #         self,
+        #         f"my-awesome-{type_subnet}-rt",
+        #         vpc_id=vpc.vpc_id,
+        #         tags=[
+        #             {
+        #                 "key": "Name",
+        #                 "value": f"{VPC_CONFIG['vpc_name']}-{type_subnet}-rt",
+        #             }
+        #         ],
+        #     )
+        #     resources[f"{type_subnet}_route_table"] = rt_table_created
+
+        #     for index, subnet in enumerate(resources[f"{type_subnet}_subnets"]):
+        #         ec2.CfnSubnetRouteTableAssociation(
+        #             self,
+        #             f"rt-{type_subnet}-{index}-association",
+        #             subnet_id=subnet.ref,
+        #             route_table_id=rt_table_created.ref,
+        #         )
+
+        # internet_gateway = ec2.CfnInternetGateway(
+        #     self, f"{VPC_CONFIG['vpc_name']}-internet-gateway"
+        # )
+        # ec2.CfnVPCGatewayAttachment(
+        #     self,
+        #     "internet-gateway-attachment",
+        #     vpc_id=vpc.vpc_id,
+        #     internet_gateway_id=internet_gateway.ref,
+        # )
+
+        # ec2.CfnRoute(
+        #     self,
+        #     f"my-public-route-internet",
+        #     destination_cidr_block="0.0.0.0/0",
+        #     gateway_id=internet_gateway.ref,
+        #     route_table_id=resources["public_route_table"].ref,
+        # )
 
         return resources
 
@@ -149,7 +165,6 @@ class BackendEcsStack(Stack):
             memory_reservation_mib=256,
         )
 
-        print("-"*10, ">", private_subnet, ":(")
         service = ecs.FargateService(
             self,
             "MyService",
