@@ -6,7 +6,7 @@ from aws_cdk import (
     aws_ecs as ecs,
     aws_ecs_patterns as ecs_patterns,
 )
-from .config import BACKEND_CONFIG, VPC_CONFIG, SUBNETS
+from .config import BACKEND_CONFIG, VPC_CONFIG
 
 
 class BackendEcsStack(Stack):
@@ -42,7 +42,7 @@ class BackendEcsStack(Stack):
         my_nacl.add_entry(
             f"{VPC_CONFIG['vpc_name']}-AllowSpecificIPInbound",
             rule_number=100,
-            cidr=ec2.AclCidr.ipv4(SUBNETS[0]["cidr_block"]),
+            cidr=ec2.AclCidr.ipv4(vpc.public_subnets[0].ipv4_cidr_block),
             traffic=ec2.AclTraffic.all_traffic(),
             direction=ec2.TrafficDirection.INGRESS,
         )

@@ -10,19 +10,3 @@ VPC_CONFIG = {
     "nat_gateways": 0,
     "availability_zones": ["us-east-1a"],
 }
-SUBNETS = [
-    {
-        "type": "public",
-        "type_ec2": ec2.SubnetType.PUBLIC,
-        "name": "my-awesome-public-subnet",
-        "availability_zone": "us-east-1a",
-        "cidr_block": "10.6.6.0/28",
-    },
-    {
-        "type": "private",
-        "type_ec2": ec2.SubnetType.PRIVATE_ISOLATED,
-        "name": "my-awesome-private-subnet",
-        "availability_zone": "us-east-1a",
-        "cidr_block": "10.6.6.16/28",
-    },
-]
