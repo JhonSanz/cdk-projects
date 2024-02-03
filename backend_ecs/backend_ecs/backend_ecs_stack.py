@@ -12,14 +12,9 @@ from .config import BACKEND_CONFIG, VPC_CONFIG, SUBNETS
 class BackendEcsStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        resources = self.create_vpc()
-        sec_groups = self.create_security_groups(resources["vpc"])
-        self.create_private_nacl(resources["vpc"], resources["private_subnets"][0])
-        self.create_cluster(
-            resources["vpc"],
-            resources["private_subnets"][0],
-            sec_groups["private_sec_gp"],
-        )
+        vpc = self.create_vpc()
+        sec_groups = self.create_security_groups(vpc)
+        self.create_private_nacl(vpc)
 
     def create_security_groups(self, vpc):
         internet_sg = ec2.SecurityGroup(
@@ -37,8 +32,13 @@ class BackendEcsStack(Stack):
             "private_sec_gp": internal_sg,
         }
 
-    def create_private_nacl(self, vpc, private_subnet):
-        my_nacl = ec2.NetworkAcl(self, "MyNACL", vpc=vpc)
+    def create_private_nacl(self, vpc):
+        my_nacl = ec2.NetworkAcl(
+            self,
+            "MyNACL",
+            vpc=vpc,
+            subnet_selection=ec2.SubnetSelection(subnets=vpc.isolated_subnets),
+        )
         my_nacl.add_entry(
             f"{VPC_CONFIG['vpc_name']}-AllowSpecificIPInbound",
             rule_number=100,
@@ -53,125 +53,56 @@ class BackendEcsStack(Stack):
             traffic=ec2.AclTraffic.all_traffic(),
             direction=ec2.TrafficDirection.EGRESS,
         )
-        ec2.CfnSubnetNetworkAclAssociation(
-            self,
-            f"{VPC_CONFIG['vpc_name']}-MyNACLAssociation",
-            subnet_id=private_subnet.subnet_id,
-            network_acl_id=my_nacl.network_acl_id,
-        )
 
     def create_vpc(self):
-        resources = {
-            "public_subnets": [],
-            "private_subnets": [],
-            "public_route_table": None,
-            "private_route_table": None,
-            "vpc": None,
-            "all_subnets": [],
-        }
+        subnet_config = [
+            ec2.SubnetConfiguration(
+                name="PublicSubnet",
+                subnet_type=ec2.SubnetType.PUBLIC,
+                cidr_mask=28,
+            ),
+            ec2.SubnetConfiguration(
+                name="VpnSubnet",
+                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED,
+                cidr_mask=28,
+            ),
+        ]
 
         vpc = ec2.Vpc(
             self,
             VPC_CONFIG["vpc_name"],
             cidr=VPC_CONFIG["cidr"],
             nat_gateways=VPC_CONFIG["nat_gateways"],
-            subnet_configuration=[],
+            subnet_configuration=subnet_config,
             enable_dns_support=True,
             enable_dns_hostnames=True,
+            availability_zones=VPC_CONFIG["availability_zones"],
         )
-        resources["vpc"] = vpc
+        return vpc
 
-        for subnet in SUBNETS:
-            subnet_created = ec2.Subnet(
-                self,
-                subnet["name"],
-                vpc_id=vpc.vpc_id,
-                cidr_block=subnet["cidr_block"],
-                availability_zone=subnet["availability_zone"],
-                map_public_ip_on_launch=True,
-            )
-            resources[f"{subnet['type']}_subnets"].append(subnet_created)
+    # def create_cluster(self, vpc, private_subnet, private_sec_gp):
+    #     cluster = ecs.Cluster(self, "MyCluster", vpc=vpc)
 
-        resources["all_subnets"] = (
-            resources["public_subnets"] + resources["private_subnets"]
-        )
+    #     task_definition = ecs.FargateTaskDefinition(
+    #         self,
+    #         f"{VPC_CONFIG['vpc_name']}-MyFargateTaskDefinition",
+    #         memory_limit_mib=512,  # 512 is 0.5 GB
+    #         cpu=256,  # 256 is 0.25 vCPU
+    #     )
 
-        # internet_gateway = ec2.CfnInternetGateway(
-        #     self, f"{VPC_CONFIG['vpc_name']}-internet-gateway"
-        # )
+    #     task_definition.add_container(
+    #         f"{VPC_CONFIG['vpc_name']}-MyBackendContainer",
+    #         image=ecs.ContainerImage.from_registry(BACKEND_CONFIG["docker_image"]),
+    #         memory_reservation_mib=256,
+    #     )
 
-        # for intex, subnet in enumerate(resources["all_subnets"]):
-        #     subnet.add_route(
-        #         f"{subnet.to_string()}-{intex}-{VPC_CONFIG['vpc_name']}-route",
-        #         router_id=internet_gateway.ref,
-        #         router_type=ec2.RouterType.GATEWAY,
-        #     )
-
-        # for type_subnet in ["public", "private"]:
-        #     rt_table_created = ec2.CfnRouteTable(
-        #         self,
-        #         f"my-awesome-{type_subnet}-rt",
-        #         vpc_id=vpc.vpc_id,
-        #         tags=[
-        #             {
-        #                 "key": "Name",
-        #                 "value": f"{VPC_CONFIG['vpc_name']}-{type_subnet}-rt",
-        #             }
-        #         ],
-        #     )
-        #     resources[f"{type_subnet}_route_table"] = rt_table_created
-
-        #     for index, subnet in enumerate(resources[f"{type_subnet}_subnets"]):
-        #         ec2.CfnSubnetRouteTableAssociation(
-        #             self,
-        #             f"rt-{type_subnet}-{index}-association",
-        #             subnet_id=subnet.ref,
-        #             route_table_id=rt_table_created.ref,
-        #         )
-
-        # internet_gateway = ec2.CfnInternetGateway(
-        #     self, f"{VPC_CONFIG['vpc_name']}-internet-gateway"
-        # )
-        # ec2.CfnVPCGatewayAttachment(
-        #     self,
-        #     "internet-gateway-attachment",
-        #     vpc_id=vpc.vpc_id,
-        #     internet_gateway_id=internet_gateway.ref,
-        # )
-
-        # ec2.CfnRoute(
-        #     self,
-        #     f"my-public-route-internet",
-        #     destination_cidr_block="0.0.0.0/0",
-        #     gateway_id=internet_gateway.ref,
-        #     route_table_id=resources["public_route_table"].ref,
-        # )
-
-        return resources
-
-    def create_cluster(self, vpc, private_subnet, private_sec_gp):
-        cluster = ecs.Cluster(self, "MyCluster", vpc=vpc)
-
-        task_definition = ecs.FargateTaskDefinition(
-            self,
-            f"{VPC_CONFIG['vpc_name']}-MyFargateTaskDefinition",
-            memory_limit_mib=512,  # 512 is 0.5 GB
-            cpu=256,  # 256 is 0.25 vCPU
-        )
-
-        task_definition.add_container(
-            f"{VPC_CONFIG['vpc_name']}-MyBackendContainer",
-            image=ecs.ContainerImage.from_registry(BACKEND_CONFIG["docker_image"]),
-            memory_reservation_mib=256,
-        )
-
-        service = ecs.FargateService(
-            self,
-            "MyService",
-            cluster=cluster,
-            task_definition=task_definition,
-            desired_count=1,
-            assign_public_ip=False,
-            vpc_subnets=ec2.SubnetSelection(subnets=[private_subnet]),
-            security_groups=[private_sec_gp],
-        )
+    #     service = ecs.FargateService(
+    #         self,
+    #         "MyService",
+    #         cluster=cluster,
+    #         task_definition=task_definition,
+    #         desired_count=1,
+    #         assign_public_ip=False,
+    #         vpc_subnets=ec2.SubnetSelection(subnets=[private_subnet]),
+    #         security_groups=[private_sec_gp],
+    #     )
