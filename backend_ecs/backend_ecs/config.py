@@ -1,7 +1,7 @@
 from aws_cdk import aws_ec2 as ec2
 
 BACKEND_CONFIG = {
-    "docker_image": "nginx:latest"
+    "docker_image": "docker.io/jhonsanz/flask-test"
 }
 
 VPC_CONFIG = {

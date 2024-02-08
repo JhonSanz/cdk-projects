@@ -5,6 +5,7 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_ecs as ecs,
     aws_ecs_patterns as ecs_patterns,
+    aws_autoscaling as autoscaling,
 )
 from .config import BACKEND_CONFIG, VPC_CONFIG
 
@@ -15,12 +16,15 @@ class BackendEcsStack(Stack):
         vpc = self.create_vpc()
         sec_groups = self.create_security_groups(vpc)
         self.create_private_nacl(vpc)
+        self.create_cluster(vpc, sec_groups["private_sec_gp"], sec_groups["public_sec_gp"])
 
     def create_security_groups(self, vpc):
         internet_sg = ec2.SecurityGroup(
             self, f"{VPC_CONFIG['vpc_name']}-public-sg", vpc=vpc
         )
+        internet_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(5000))
         internet_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80))
+        internet_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(443))
         internet_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(22))
 
         internal_sg = ec2.SecurityGroup(
@@ -80,29 +84,35 @@ class BackendEcsStack(Stack):
         )
         return vpc
 
-    # def create_cluster(self, vpc, private_subnet, private_sec_gp):
-    #     cluster = ecs.Cluster(self, "MyCluster", vpc=vpc)
+    def create_cluster(self, vpc, private_sec_gp, public_sec_gp):
+        cluster = ecs.Cluster(self, "MyCluster", vpc=vpc)
 
-    #     task_definition = ecs.FargateTaskDefinition(
-    #         self,
-    #         f"{VPC_CONFIG['vpc_name']}-MyFargateTaskDefinition",
-    #         memory_limit_mib=512,  # 512 is 0.5 GB
-    #         cpu=256,  # 256 is 0.25 vCPU
-    #     )
+        task_definition = ecs.FargateTaskDefinition(
+            self,
+            f"{VPC_CONFIG['vpc_name']}-MyFargateTaskDefinition",
+            memory_limit_mib=512,  # 512 is 0.5 GB
+            cpu=256,  # 256 is 0.25 vCPU
+        )
 
-    #     task_definition.add_container(
-    #         f"{VPC_CONFIG['vpc_name']}-MyBackendContainer",
-    #         image=ecs.ContainerImage.from_registry(BACKEND_CONFIG["docker_image"]),
-    #         memory_reservation_mib=256,
-    #     )
+        image = ecs.ContainerImage.from_registry(BACKEND_CONFIG["docker_image"])
+        task_definition.add_container(
+            f"{VPC_CONFIG['vpc_name']}-MyBackendContainer",
+            image=image,
+            memory_reservation_mib=256,
+        )
 
-    #     service = ecs.FargateService(
-    #         self,
-    #         "MyService",
-    #         cluster=cluster,
-    #         task_definition=task_definition,
-    #         desired_count=1,
-    #         assign_public_ip=False,
-    #         vpc_subnets=ec2.SubnetSelection(subnets=[private_subnet]),
-    #         security_groups=[private_sec_gp],
-    #     )
+        service = ecs.FargateService(
+            self,
+            "MyService",
+            cluster=cluster,
+            task_definition=task_definition,
+            desired_count=1,
+            assign_public_ip=True,
+            vpc_subnets=ec2.SubnetSelection(subnets=vpc.public_subnets),
+            security_groups=[public_sec_gp],
+        )
+
+
+    def create_autoscaling_grop(self):
+        # https://github.com/aws-samples/aws-cdk-examples/blob/master/python/ecs/fargate-service-with-autoscaling/app.py
+        pass
