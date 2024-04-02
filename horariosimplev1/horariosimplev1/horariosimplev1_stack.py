@@ -7,7 +7,10 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_events as events,
     aws_lambda as _lambda,
+    aws_s3 as s3,
+    aws_iam as iam,
     aws_events_targets as targets,
+    RemovalPolicy,
 )
 from .handler_generator import generate_lambda_function
 
@@ -16,8 +19,11 @@ class Horariosimplev1Stack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        vpc = ec2.Vpc(self, "MyVpc", max_azs=1)
+        self.create_site_bucket()
+        self.create_hosted_ec2_backend()
 
+    def create_hosted_ec2_backend(self):
+        vpc = ec2.Vpc(self, "HorarioSimpleVpc", max_azs=1)
         instance = ec2.Instance(
             self,
             "HorariosimpleInstance",
@@ -35,7 +41,9 @@ class Horariosimplev1Stack(Stack):
             "HorariosimpleBackupsGenerator",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="lambda_function.handler",
-            code=_lambda.Code.from_asset(os.path.join(current_dir, "horarioSimpleFunction.zip")),
+            code=_lambda.Code.from_asset(
+                os.path.join(current_dir, "horarioSimpleFunction.zip")
+            ),
         )
         rule = events.Rule(
             self,
@@ -45,3 +53,29 @@ class Horariosimplev1Stack(Stack):
             ),
         )
         rule.add_target(targets.LambdaFunction(lambda_function))
+
+    def create_site_bucket(self):
+        block_public_access = s3.BlockPublicAccess(
+            block_public_acls=False,
+            ignore_public_acls=False,
+            block_public_policy=False,
+            restrict_public_buckets=False,
+        )
+
+        bucket = s3.Bucket(
+            self,
+            "site_bucket",
+            bucket_name="horario-simple-website",
+            website_index_document="index.html",
+            website_error_document="error.html",
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+            block_public_access=block_public_access,
+        )
+        bucket_policy = iam.PolicyStatement(
+            actions=["s3:GetObject"],
+            resources=[bucket.arn_for_objects("*")],
+            principals=[iam.AnyPrincipal()],
+        )
+        bucket.add_to_resource_policy(bucket_policy)
+        return bucket
