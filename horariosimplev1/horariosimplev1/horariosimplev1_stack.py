@@ -23,14 +23,17 @@ class Horariosimplev1Stack(Stack):
         self.create_hosted_ec2_backend()
 
     def create_hosted_ec2_backend(self):
-        vpc = ec2.Vpc(self, "HorarioSimpleVpc", max_azs=1)
+        vpc = ec2.Vpc(self, "HorarioSimpleVpc", max_azs=1, nat_gateways=0)
         instance = ec2.Instance(
             self,
             "HorariosimpleInstance",
             instance_type=ec2.InstanceType.of(
                 ec2.InstanceClass.T4G, ec2.InstanceSize.SMALL
             ),
-            machine_image=ec2.MachineImage.latest_amazon_linux2(),
+            machine_image=ec2.AmazonLinuxImage(
+                cpu_type=ec2.AmazonLinuxCpuType.ARM_64,
+                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+            ),
             vpc=vpc,
         )
         # generate_lambda_function(str(instance.instance_public_ip))
